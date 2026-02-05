@@ -1,149 +1,98 @@
 #include <iostream>
+#include <ctime>
 #include <vector>
 #include <string>
-#include <iomanip>
-#include <fstream>
-#include <algorithm>
+#include <iomanip> // FIX: Added for setprecision
 
 using namespace std;
 
-class Product {
+class Vehicle {
 private:
-    int id;
-    string name;
-    double price;
-    int stockQuantity;
-    int reorderThreshold;
-    int unitsSold;
-
+    string licensePlate;
+    string type;
+    long long entryTime; // FIX: Renamed for consistency
 public:
-    Product(int i, string n, double p, int quantity, int reorder) :
-        id(i), name(n), price(p), stockQuantity(quantity), reorderThreshold(reorder), unitsSold(0) {}
-
-    int getId() const { return id; }
-    string getName() const { return name; }
-    double getPrice() const { return price; }
-    int getStockQuantity() const { return stockQuantity; }
-    int getReorderThreshold() const { return reorderThreshold; }
-    int getUnitsSold() const { return unitsSold; }
-
-    bool hasEnoughStock(int quantity) const {
-        return stockQuantity >= quantity;
+    Vehicle(string plate, string vehicleType) {
+        licensePlate = plate;
+        type = vehicleType;
+        entryTime = time(0);
     }
 
-    void reduceStock(int quantity) {
-        stockQuantity -= quantity;
-        unitsSold += quantity;
-    }
-    void restock(int quantity) {
-        stockQuantity += quantity;
-    }
+    string getPlate() const { return licensePlate; }
+
+    // FIX: Renamed to match the logic call in exitVehicle
+    long long getEntryTime() const { return entryTime; }
 };
 
-class InventorySystem {
+class ParkingGarage {
 private:
-    vector<Product> catalog;
+    vector<Vehicle> vehicles; // FIX: Using plural 'vehicles'
+    int totalSpots;
+    double hourlyRate;
     double totalRevenue;
 
-public:
-    InventorySystem() : totalRevenue(0.0) {}
+public: // FIX: EVERYTHING BELOW MUST BE PUBLIC
+    ParkingGarage(int spots, double rate)
+        : totalSpots(spots), hourlyRate(rate), totalRevenue(0.0) {}
 
-    void addProduct(Product p) {
-        catalog.push_back(p);
-        cout << "[System] Added: " << p.getName() << " to inventory." << endl;
+    void setParkVehicle(string plate, string type) {
+        if (vehicles.size() >= (size_t)totalSpots) {
+            cout << "DENIED: Garage is full. " << plate << " cannot enter." << endl;
+            return;
+        }
+
+        Vehicle newVehicle(plate, type);
+        vehicles.push_back(newVehicle);
+        cout << "[ENTRY] " << type << " (" << plate << ") has parked." << endl;
     }
 
-    void processSale(int productId, int qty) {
-        for (auto& p : catalog) {
-            if (p.getId() == productId) {
-                if (p.hasEnoughStock(qty)) {
-                    p.reduceStock(qty);
-                    double saleAmount = p.getPrice() * qty;
-                    totalRevenue += saleAmount;
+    void exitVehicle(string plate) {
+        for (auto it = vehicles.begin(); it != vehicles.end(); ++it) {
+            if (it->getPlate() == plate) {
+                long long exitTime = time(0);
+                long long durationSeconds = exitTime - it->getEntryTime();
 
-                    cout << fixed << setprecision(2);
-                    cout << "[SALE] Sold " << qty << "x " << p.getName()
-                         << " | Subtotal: $" << saleAmount << endl;
-                    return;
-                } else {
-                    cout << "[ERROR] Insufficient stock for " << p.getName() << endl;
-                    return;
-                }
+                // 1 second = 1 hour for testing
+                double hours = (durationSeconds == 0) ? 1 : (double)durationSeconds;
+                double fee = hours * hourlyRate;
+
+                totalRevenue += fee;
+
+                cout << fixed << setprecision(2);
+                cout << "\n--- PARKING RECEIPT ---" << endl;
+                cout << "License: " << it->getPlate() << endl;
+                cout << "Duration: " << hours << " hour(s)" << endl;
+                cout << "Total Fee: $" << fee << endl;
+                cout << "-----------------------" << endl;
+
+                vehicles.erase(it);
+                return;
             }
         }
-        cout << "[ERROR] Product ID " << productId << " not found." << endl;
+        cout << "ERROR: Vehicle with plate " << plate << " not found." << endl;
     }
 
-    void showTopSellers() {
-        vector<Product> sortedCatalog = catalog;
-        sort(sortedCatalog.begin(), sortedCatalog.end(), [](const Product& a, const Product& b) {
-            return a.getUnitsSold() > b.getUnitsSold();
-        });
-
-        cout << "\n--- TOP SELLING PRODUCTS ---" << endl;
-        for (const auto& p : sortedCatalog) {
-            if (p.getUnitsSold() > 0) {
-                cout << p.getName() << " | Units Sold: " << p.getUnitsSold() << endl;
-            }
-        }
-    }
-
-    void showLowStockReport() {
-        cout << "\n--- CRITICAL LOW STOCK REPORT ---" << endl;
-        bool foundAny = false;
-        for (const auto& p : catalog) {
-            if (p.getStockQuantity() <= p.getReorderThreshold()) {
-                cout << "ALERT: " << p.getName() << " (ID: " << p.getId() << ")"
-                     << " | Stock: " << p.getStockQuantity()
-                     << " | Threshold: " << p.getReorderThreshold() << endl;
-                foundAny = true;
-            }
-        }
-        if (!foundAny) cout << "All stock levels are healthy." << endl;
-        cout << "---------------------------------" << endl;
-    }
-
-    void showInventory() {
-        cout << "\n" << left << setw(5) << "ID" << setw(15) << "Name" << setw(10) << "Price" << setw(10) << "Stock" << "Sold" << endl;
-        cout << string(45, '-') << endl;
-        for (const auto& p : catalog) {
-            cout << left << setw(5) << p.getId()
-                 << setw(15) << p.getName()
-                 << "$" << setw(9) << fixed << setprecision(2) << p.getPrice()
-                 << setw(10) << p.getStockQuantity()
-                 << p.getUnitsSold() << endl;
-        }
-        cout << "\nTotal Store Revenue: $" << totalRevenue << endl;
-    }
-
-    void saveReport() {
-        ofstream outFile("inventory_status.txt");
-        if (outFile.is_open()) {
-            outFile << "--- INVENTORY STATUS REPORT ---\n";
-            for (const auto& p : catalog) {
-                outFile << p.getName() << " | Stock: " << p.getStockQuantity() << " | Sold: " << p.getUnitsSold() << "\n";
-            }
-            outFile.close();
-            cout << "[System] Report saved to inventory_status.txt" << endl;
-        }
+    void showStatus() {
+        cout << "\n--- GARAGE STATUS ---" << endl;
+        cout << "Occupancy: " << vehicles.size() << "/" << totalSpots << endl;
+        cout << "Available Spots: " << totalSpots - vehicles.size() << endl;
+        cout << "Total Revenue: $" << totalRevenue << endl;
+        cout << "---------------------" << endl;
     }
 };
 
 int main() {
-    InventorySystem store;
+    ParkingGarage myGarage(10, 5.00);
 
-    store.addProduct(Product(101, "MacBook Pro", 1999.99, 10, 2));
-    store.addProduct(Product(102, "iPhone 15", 999.00, 3, 2));
-    store.addProduct(Product(103, "AirPods", 150.00, 20, 5));
+    myGarage.setParkVehicle("ABC-123", "Car");
+    myGarage.setParkVehicle("XYZ-999", "Truck");
 
-    store.processSale(101, 1);
-    store.processSale(102, 2);
-    store.processSale(103, 5);
+    myGarage.showStatus();
 
-    store.showInventory();
-    store.showTopSellers();
-    store.showLowStockReport();
-    store.saveReport();
+    cout << "\nProcessing exit for ABC-123..." << endl;
+    myGarage.exitVehicle("ABC-123");
+
+    myGarage.showStatus();
 
     return 0;
 }
